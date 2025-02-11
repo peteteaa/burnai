@@ -1,55 +1,50 @@
 import ee
 
-# Initialize the Earth Engine module
+# Initialize Earth Engine
 ee.Initialize(project="heroic-gantry-450601-j7")
 
-# Define the region of interest (California boundary)
-california = ee.FeatureCollection("TIGER/2018/States").filter(ee.Filter.eq("NAME", "California"))
+# Define the region of interest (San Francisco County)
+san_francisco = ee.FeatureCollection("TIGER/2018/Counties").filter(ee.Filter.eq("NAME", "San Francisco"))
 
-# Function to mask clouds and shadows using the SCL band (Scene Classification Layer)
+# Function to mask clouds
 def mask_clouds(image):
-    scl = image.select("SCL")  # SCL (Scene Classification Layer) band
-    mask = scl.neq(3).And(scl.neq(8)).And(scl.neq(9)).And(scl.neq(10))  # Remove clouds, shadows, cirrus
+    scl = image.select("SCL")
+    mask = scl.neq(3).And(scl.neq(8)).And(scl.neq(9)).And(scl.neq(10))
     return image.updateMask(mask)
 
-# Load Sentinel-2 imagery for 2023, filter by region, date, and cloud coverage
+# Load and filter Sentinel-2 images
 s2_collection = (
     ee.ImageCollection("COPERNICUS/S2_SR_HARMONIZED")
-    .filterBounds(california)
-    .filterDate("2023-01-01", "2023-12-31")
-    .filter(ee.Filter.lt("CLOUDY_PIXEL_PERCENTAGE", 30))  # Apply 30% cloud coverage filter
+    .filterBounds(san_francisco)
+    .filterDate("2023-06-01", "2023-07-31")  # Reduced date range
+    .filter(ee.Filter.lt("CLOUDY_PIXEL_PERCENTAGE", 20))  # Stricter cloud filter
     .map(mask_clouds)
 )
 
-# Ensure the collection is not empty
-count = s2_collection.size().getInfo()
-if count == 0:
-    raise ValueError("No Sentinel-2 images found for the given filters. Try adjusting the date or region.")
+# Check if images exist
+if s2_collection.size().getInfo() == 0:
+    raise ValueError("No Sentinel-2 images found for San Francisco. Adjust filters.")
 
-# Calculate NDVI (Normalized Difference Vegetation Index)
+# Compute NDVI
 def compute_ndvi(image):
     ndvi = image.normalizedDifference(["B8", "B4"]).rename("NDVI")
     return image.addBands(ndvi)
 
-# Apply NDVI calculation to each image in the collection
 ndvi_collection = s2_collection.map(compute_ndvi)
+ndvi_reduced = ndvi_collection.select("NDVI").mean()  # Use mean instead of median
 
-# Reduce the collection to a median composite
-ndvi_median = ndvi_collection.select("NDVI").median()
-
-# Define export parameters
+# Export with reduced size parameters
 export_task = ee.batch.Export.image.toDrive(
-    image=ndvi_median,
-    description="California_NDVI_2023",
+    image=ndvi_reduced,
+    description="SanFrancisco_NDVI",
     folder="GEE_Exports",
-    fileNamePrefix="california_ndvi_2023",
-    region=california.geometry(),
-    scale=10,
-    maxPixels=1e13,
+    fileNamePrefix="sanfrancisco_ndvi",
+    region=san_francisco.geometry(),
+    scale=30,  # Adjust resolution
+    maxPixels=1e10,
     fileFormat="GeoTIFF"
 )
 
-# Start the export task
 export_task.start()
-
-print("Export started. Check Google Drive for output.")
+print("Export started for San Francisco. Check Google Drive.")
+print("Export status:", export_task.status())
