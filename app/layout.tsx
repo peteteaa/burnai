@@ -1,5 +1,6 @@
 import type React from "react"
 import type { Metadata } from "next"
+import "./globals.css"
 
 export const metadata: Metadata = {
   title: "BurnAI - Controlled Burn Analysis",
@@ -13,7 +14,11 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body className="relative">
+        <div className="relative min-h-screen">
+          {children}
+        </div>
+      </body>
     </html>
   )
 }
